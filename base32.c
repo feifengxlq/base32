@@ -26,7 +26,8 @@
 #include "php_ini.h"
 #include "ext/standard/info.h"
 #include "php_base32.h"
-
+#include <stdint.h>
+#include <string.h>
 /* If you declare any globals in php_base32.h uncomment this:
 ZEND_DECLARE_MODULE_GLOBALS(base32)
 */
@@ -40,6 +41,8 @@ static int le_base32;
  */
 const zend_function_entry base32_functions[] = {
 	PHP_FE(confirm_base32_compiled,	NULL)		/* For testing, remove later. */
+	PHP_FE(base32_encode, NULL)
+	PHP_FE(base32_decode, NULL)
 	PHP_FE_END	/* Must be the last line in base32_functions[] */
 };
 /* }}} */
@@ -141,8 +144,135 @@ PHP_MINFO_FUNCTION(base32)
 	DISPLAY_INI_ENTRIES();
 	*/
 }
-/* }}} */
+uint8_t *php_base32_decode(const uint8_t * encoded, int length, int *ret_length)
+{
+	int buffer = 0;
+	int bitsLeft = 0;
+	int count = 0;
+  	uint8_t *result;
+  	int bufSize = 0;
+  	const uint8_t *ptr = encoded;
+  	bufSize = (length*5+7)/8;
+  	//printf("bufSize:%d\n", bufSize);
+  	result = (uint8_t *)safe_emalloc( bufSize * sizeof(char), 1, 1);
+  	for (; count < bufSize && *ptr; ++ptr) {
+    	uint8_t ch = *ptr;
+    	if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' || ch == '-') {
+      		continue;
+    	}
+    	buffer <<= 5;
 
+    	// Deal with commonly mistyped characters
+    	if (ch == '0') {
+      		ch = 'O';
+    	} else if (ch == '1') {
+      		ch = 'L';
+    	} else if (ch == '8') {
+      	ch = 'B';
+    	}
+
+    	// Look up one base32 digit
+    	if ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z')) {
+      		ch = (ch & 0x1F) - 1;
+    	} else if (ch >= '2' && ch <= '7') {
+      		ch -= '2' - 26;
+    	} else {
+    		//	printf("ch:%c\n", ch);
+      		return NULL;
+    	}
+
+    	buffer |= ch;
+    	bitsLeft += 5;
+    	if (bitsLeft >= 8) {
+      		result[count++] = buffer >> (bitsLeft - 8);
+      		bitsLeft -= 8;
+    	}
+  		//printf("count:%d\n", count);
+  	}
+  	if (count < bufSize) {
+    	result[count] = '\000';
+  	}
+  	*ret_length = count;
+  	//printf("ret_length:%d\n", *ret_length);
+  	return result;
+}
+uint8_t *php_base32_encode(const uint8_t *data, int length, int *ret_length) {
+  	if (length < 0 || length > (1 << 28)) {
+   		return NULL;
+  	}
+  	int bufSize;
+  	bufSize = (8*length+4)/5;
+  	//printf("bufSize %d\n", bufSize);
+  	uint8_t *result;
+  	result = (uint8_t *)safe_emalloc(bufSize * sizeof(uint8_t), 1, 1);
+  	int count = 0;
+  	if (length > 0) {
+    	int buffer = data[0];
+    	int next = 1;
+    	int bitsLeft = 8;
+    	while (count < bufSize && (bitsLeft > 0 || next < length)) {
+	      	if (bitsLeft < 5) {
+	        	if (next < length) {
+	          		buffer <<= 8;
+	          		buffer |= data[next++] & 0xFF;
+	          		bitsLeft += 8;
+	        	} else {
+	          		int pad = 5 - bitsLeft;
+	          		buffer <<= pad;
+	          		bitsLeft += pad;
+	        	}
+	      	}
+		    int index = 0x1F & (buffer >> (bitsLeft - 5));
+		    bitsLeft -= 5;
+		    result[count++] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"[index];
+    	}
+  	}
+  	if (count < bufSize) {
+    	result[count] = '\000';
+  	}
+  	*ret_length = count;
+  	return result;
+}
+/* }}} */
+/**
+ * base32_encode
+ */
+PHP_FUNCTION(base32_encode)
+{
+	char *str;
+	unsigned char *result;
+	int str_len, ret_length;
+
+	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &str, &str_len) == FAILURE) {
+		return;
+	}
+	result = php_base32_encode((uint8_t*)str, str_len, &ret_length);
+	if (result != NULL) {
+		RETVAL_STRINGL((char*)result, ret_length, 0);
+	} else {
+		RETURN_FALSE;
+	}
+}
+/**
+ * base32_decode
+ */
+PHP_FUNCTION(base32_decode)
+{
+	char *str;
+	unsigned char *result;
+	zend_bool is_num = 0;
+	int str_len, ret_length;
+
+	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s|b", &str, &str_len, &is_num) == FAILURE) {
+		return;
+	}
+	result = php_base32_decode((uint8_t*)str, str_len, &ret_length);
+	if (result != NULL) {
+		RETVAL_STRINGL((char*)result, ret_length, 0);
+	} else {
+		RETURN_FALSE;
+	}
+}
 
 /* Remove the following function when you have successfully modified config.m4
    so that your module can be compiled into PHP, it exists only for testing

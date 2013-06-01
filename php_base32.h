@@ -42,6 +42,8 @@ PHP_RINIT_FUNCTION(base32);
 PHP_RSHUTDOWN_FUNCTION(base32);
 PHP_MINFO_FUNCTION(base32);
 
+PHP_FUNCTION(base32_encode);
+PHP_FUNCTION(base32_decode);
 PHP_FUNCTION(confirm_base32_compiled);	/* For testing, remove later. */
 
 /* 

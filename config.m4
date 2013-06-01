@@ -13,9 +13,9 @@ dnl [  --with-base32             Include base32 support])
 
 dnl Otherwise use enable:
 
-dnl PHP_ARG_ENABLE(base32, whether to enable base32 support,
-dnl Make sure that the comment is aligned:
-dnl [  --enable-base32           Enable base32 support])
+PHP_ARG_ENABLE(base32, whether to enable base32 support,
+Make sure that the comment is aligned:
+[  --enable-base32           Enable base32 support])
 
 if test "$PHP_BASE32" != "no"; then
   dnl Write more examples of tests here...
